@@ -45,25 +45,45 @@ type Invite struct {
 	email string `form:"email"`
 }
 
-func InvitationHandler() gin.HandlerFunc {
+func InviteUser(client *ent.Client) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var invite Invite
-
 		if err := ctx.ShouldBindJSON(&invite); err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		err := sendInvitationEmail(invite.email)
-		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Extract inviterEmail and inviteeEmail from the request, assuming they are passed as query parameters or part of the JSON body.
+		// You may need to adjust this part based on how you intend to receive these emails.
+		inviterEmail := "" // Placeholder: Extract from ctx
+		inviteeEmail := invite.email
+
+		// Validate that the inviter and invitee have the same email domain.
+		if !validateEmailDomain(inviterEmail, inviteeEmail) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "inviter and invitee email domains do not match"})
 			return
 		}
 
-		ctx.JSON(http.StatusOK, gin.H{"message": "Invitation sent successfully!"})
+		// Look up the inviter's user entity to retrieve their group information
+		inviter, err := client.User.
+			Query().
+			Where(user.EmailEQ(inviterEmail)).
+			Only(ctx)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to retrieve inviter details: %v", err)})
+			return
+		}
 
+		// Assuming inviter has been successfully retrieved and you want to proceed with sending an email.
+		if err := sendInvitationEmail(inviteeEmail); err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to send invitation email: %v", err)})
+			return
+		}
+
+		ctx.JSON(http.StatusOK, gin.H{"message": "Invitation sent successfully"})
 	}
 }
+
 
 func sendInvitationEmail(email string) error {
 	// Set up authentication information.
